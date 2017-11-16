@@ -32,8 +32,10 @@ contract('Exchange.submitOrder() && executeOrder()', accounts => {
       }
     )
 
+    assert(false)
+
     const log = tx.logs[0]
-    assert.equal(log.event, 'logOrderSubmitted', 'Event not emitted')
+    assert.equal(log.event, 'LogOrderSubmitted', 'Event not emitted')
 
     orderId = tx.logs[0].args.id
     const order = await exchange.orderBook_(orderId)
@@ -42,7 +44,6 @@ contract('Exchange.submitOrder() && executeOrder()', accounts => {
     assert.equal(order[2], bidAmount, 'bid amount incorrect')
     assert.equal(order[3], askToken, 'ask token incorrect')
     assert.equal(order[4], askAmount, 'ask amount incorrect')
-    assert.equal(order[5], false, 'filled incorrect') // filled
   })
 
   it("executeOrder(), should succeed by trading the tokens. Maker bids ether.", async () => {
@@ -66,7 +67,7 @@ contract('Exchange.submitOrder() && executeOrder()', accounts => {
     * Confirm correct event logged *
     *******************************/
     const log = tx.logs[0]
-    assert.equal(log.event, 'logOrderExecuted', 'Event not emitted')
+    assert.equal(log.event, 'LogOrderExecuted', 'Event not emitted')
 
     /*********************************
     * Confirm token balances correct *
@@ -85,10 +86,10 @@ contract('Exchange.submitOrder() && executeOrder()', accounts => {
     // Note taker also had to pay for the executeOrder tx
     assert.isBelow(takerBalanceAfter, takerBalanceBefore - 100, 'Taker eth balance incorrect')
 
-    /***************************
-    * Confirm order now filled *
-    ***************************/
+    /**************************
+    * Confirm does not exist! *
+    **************************/
     const order = await exchange.orderBook_(orderId)
-    assert.equal(order[5], true)
+    assert.equal(order[3], 0)
   })
 })

@@ -9,6 +9,14 @@ import DropDownMenu from 'material-ui/DropDownMenu';
 import MenuItem from 'material-ui/MenuItem';
 import RaisedButton from 'material-ui/RaisedButton';
 import TextField from 'material-ui/TextField';
+import {
+  Table,
+  TableBody,
+  TableHeader,
+  TableHeaderColumn,
+  TableRow,
+  TableRowColumn,
+} from 'material-ui/Table';
 
 // Build Artifacts
 import tokenArtiacts from './build/contracts/Token.json'
@@ -32,6 +40,8 @@ class App extends Component {
       askAmount: 1,
       token: null, // token contract
       exchange: null, // exchange contract
+      orderBook: [],
+      selectedOrder: null
     }
   }
 
@@ -117,6 +127,40 @@ class App extends Component {
   }
 
   /**
+   * Add a new order to the oder book
+   * @param {Object} order The log object emitted by the exchange.
+   */
+  addOrder(order) {
+    // NOTE eth only supported as ask token
+    // TODO support multiple tokens and pairings
+    this.setState({
+      orderBook: [
+        <TableRow key={order.id} selected={this.setState({ selectedOrder: order.id })}>
+          <TableRowColumn>{order.maker}</TableRowColumn>
+          <TableRowColumn>{this.state.tokenSymbol}</TableRowColumn>
+          <TableRowColumn>{order.bidAmount.toNumber()}</TableRowColumn>
+          <TableRowColumn>ETH</TableRowColumn>
+          <TableRowColumn>{order.askAmount.toNumber()}</TableRowColumn>
+        </TableRow>
+      ].concat(this.state.orderBook)
+    })
+  }
+
+  /**
+   * Execute a selected order.
+   */
+  executeOrder(orderId) {
+    // Get the ask amount of the order, ether to send with the tx
+    this.state.exchange.orderBook_(orderId, (err, order) => {
+      this.state.exchange.executeOrder(orderId, {
+        from: this.web3.eth.accounts[this.state.defaultAccount],
+        gas: 4e6,
+        value: order[4] // askAmount of maker order
+      })
+    })
+  }
+
+  /**
    * Load the accounts token and ether balances.
    * @param  {Address} account The user's ether address.
    */
@@ -167,6 +211,18 @@ class App extends Component {
     .watch((err, res) => {
       alert(res.args.errorString)
     })
+
+    this.state.exchange.LogOrderSubmitted({ fromBlock: 'latest', toBlock: 'latest' })
+    .watch((err, res) => {
+      console.log(`Order submitted! TxHash: https://kovan.etherscan.io/tx/${res.transactionHash}`)
+      this.addOrder(res.args)
+    })
+
+    this.state.exchange.LogOrderExecuted({ fromBlock: 'latest', toBlock: 'latest' })
+    .watch((err, res) => {
+      console.log(`Order Executed! TxHash: https://kovan.etherscan.io/tx/${res.transactionHash}`)
+      this.removeOrder(res.args.id)
+    })
   }
 
   /**
@@ -189,6 +245,20 @@ class App extends Component {
           console.log(res)
         }
       )
+    }
+  }
+
+  /**
+   * Remove an order from the orderBook.
+   */
+  removeOrder(orderId) {
+    for (let i = 0; i < this.state.orderBook.length; i++) {
+      if (this.state.orderBook[i].key === orderId) {
+        let updatedOrderBook = this.state.orderBook.slice();
+        updatedOrderBook.splice(i, 1);
+        this.setState({ orderBook: updatedOrderBook })
+        break
+      }
     }
   }
 
@@ -264,38 +334,35 @@ class App extends Component {
         <br />
         <h3>Submit an Order!</h3>
         <p>The default exchange supports only the pairing of {this.state.tokenSymbol} / ETH</p>
-        <TextField
-          floatingLabelText="Bid"
-          style={{width: 75}}
-          value={this.state.tokenSymbol}
-        />
-        <TextField
-          floatingLabelText="Amount"
-          style={{width: 75}}
-          value={this.state.bidAmount}
-        />
-        <TextField
-          floatingLabelText="Ask"
-          style={{width: 75}}
-          value='ETH'
-        />
-        <TextField
-          floatingLabelText="Amount"
-          style={{width: 75}}
-          value={this.state.askAmount}
-        />
+        <TextField floatingLabelText="Bid" style={{width: 75}} value={this.state.tokenSymbol} />
+        <TextField floatingLabelText="Amount" style={{width: 75}} value={this.state.bidAmount} onChange={(e, bidAmount) => this.setState({ bidAmount })}/>
+        <TextField floatingLabelText="Ask" style={{width: 75}} value='ETH' />
+        <TextField floatingLabelText="Amount" style={{width: 75}} value={this.state.askAmount} onChange={(e, askAmount) => this.setState({ askAmount })}/>
         <br />
-        <RaisedButton
-          label="Submit"
-          labelPosition="after"
-          style={{width: 300}}
-          primary={true}
-          onClick={() => this.submitOrder()}
-        />
+        <RaisedButton label="Submit" labelPosition="after" style={{width: 300}} primary={true} onClick={() => this.submitOrder()}/>
+        <br />
         <br />
         <h3>Order Book</h3>
-
-
+        <p>Select an order to execute!</p>
+        <RaisedButton label="Execute Order" labelPosition="after" style={{width: 500}} primary={true} onClick={() => this.executeOrder(this.state.selectedOrder)}/>
+        <Table
+          style={{ maxHeight: 500, overflow: 'auto' }}
+          fixedHeader={true}
+          multiSelectable={false}
+        >
+          <TableHeader>
+            <TableRow>
+              <TableHeaderColumn>Maker</TableHeaderColumn>
+              <TableHeaderColumn>Bid Token</TableHeaderColumn>
+              <TableHeaderColumn>Bid Amount</TableHeaderColumn>
+              <TableHeaderColumn>Ask Token</TableHeaderColumn>
+              <TableHeaderColumn>Ask Amount</TableHeaderColumn>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            { this.state.orderBook }
+          </TableBody>
+        </Table>
       </div>
     } else {
       component = <div>

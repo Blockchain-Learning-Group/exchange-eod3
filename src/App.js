@@ -46,6 +46,9 @@ class App extends Component {
   }
 
   componentDidMount() {
+    if (window.web3)
+        this.web3 = new Web3(window.web3.currentProvider)
+    else
     this.web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"))
 
     // If connected load contracts
@@ -116,6 +119,8 @@ class App extends Component {
             * Call loadEventListeners below *
             ********************************/
             this.loadEventListeners()
+
+            this.loadOrderBook()
           } else {
             console.error('Token has not been deployed to the detected network.')
           }
@@ -131,6 +136,12 @@ class App extends Component {
    * @param {Object} order The log object emitted by the exchange.
    */
   addOrder(order) {
+    // Confirm this order is not already present
+    for (let i = 0; i < this.state.orderBook.length; i++) {
+      if (this.state.orderBook[i].key === order.id) {
+        return
+      }
+    }
     // NOTE eth only supported as ask token
     // TODO support multiple tokens and pairings
     this.setState({
@@ -138,9 +149,9 @@ class App extends Component {
         <TableRow key={order.id} selected={this.setState({ selectedOrder: order.id })}>
           <TableRowColumn>{order.maker}</TableRowColumn>
           <TableRowColumn>{this.state.tokenSymbol}</TableRowColumn>
-          <TableRowColumn>{order.bidAmount.toNumber()}</TableRowColumn>
+          <TableRowColumn>{order.bidAmount.toNumber() / 10**this.state.tokenDecimals}</TableRowColumn>
           <TableRowColumn>ETH</TableRowColumn>
-          <TableRowColumn>{order.askAmount.toNumber()}</TableRowColumn>
+          <TableRowColumn>{order.askAmount.toNumber() / 10**18 }</TableRowColumn>
         </TableRow>
       ].concat(this.state.orderBook)
     })
@@ -148,14 +159,18 @@ class App extends Component {
 
   /**
    * Execute a selected order.
+   * @param {String} orderId The 32 byte hash of the order params representing its unique id.
    */
   executeOrder(orderId) {
-    // Get the ask amount of the order, ether to send with the tx
+    // Get the ask amount of the order, ether to send along with the tx
     this.state.exchange.orderBook_(orderId, (err, order) => {
       this.state.exchange.executeOrder(orderId, {
         from: this.web3.eth.accounts[this.state.defaultAccount],
         gas: 4e6,
         value: order[4] // askAmount of maker order
+      }, (err, res) => {
+        if (err) console.error(err)
+        else console.log(res)
       })
     })
   }
@@ -191,7 +206,7 @@ class App extends Component {
     **********************************/
     this.state.token.LogTokensMinted({ fromBlock: 'latest', toBlock: 'latest' })
     .watch((err, res) => {
-      alert('Tokens Minted!')
+      console.log(`Tokens Minted! TxHash: https://kovan.etherscan.io/tx/${res.transactionHash}`)
       this.loadAccountBalances(this.web3.eth.accounts[this.state.defaultAccount])
     })
 
@@ -200,7 +215,7 @@ class App extends Component {
     ************************************/
     this.state.token.Transfer({ fromBlock: 'latest', toBlock: 'latest' })
     .watch((err, res) => {
-      alert('Tokens Transferred!')
+      console.log(`Tokens Transferred! TxHash: https://kovan.etherscan.io/tx/${res.transactionHash}`)
       this.loadAccountBalances(this.web3.eth.accounts[this.state.defaultAccount])
     })
 
@@ -209,19 +224,37 @@ class App extends Component {
     **********************************/
     this.state.token.LogErrorString({ fromBlock: 'latest', toBlock: 'latest' })
     .watch((err, res) => {
-      alert(res.args.errorString)
+      console.error(res.args.errorString)
     })
 
     this.state.exchange.LogOrderSubmitted({ fromBlock: 'latest', toBlock: 'latest' })
     .watch((err, res) => {
       console.log(`Order submitted! TxHash: https://kovan.etherscan.io/tx/${res.transactionHash}`)
       this.addOrder(res.args)
+      this.loadAccountBalances(this.web3.eth.accounts[this.state.defaultAccount])
     })
 
     this.state.exchange.LogOrderExecuted({ fromBlock: 'latest', toBlock: 'latest' })
     .watch((err, res) => {
       console.log(`Order Executed! TxHash: https://kovan.etherscan.io/tx/${res.transactionHash}`)
       this.removeOrder(res.args.id)
+      this.loadAccountBalances(this.web3.eth.accounts[this.state.defaultAccount])
+    })
+  }
+
+  /**
+   * Load all orders into the order book via exchange events
+   */
+  loadOrderBook() {
+    this.state.exchange.LogOrderSubmitted({}, {fromBlock: 0, toBlock: 'latest'})
+    .get((err, orders) => {
+      for (let i = 0; i < orders.length; i++) {
+        // confirm the order still exists then append to table
+        this.state.exchange.orderBook_(orders[i].args.id, (err, order) => {
+          if (order[4].toNumber() !== 0)
+            this.addOrder(orders[i].args)
+        })
+      }
     })
   }
 
@@ -241,8 +274,8 @@ class App extends Component {
         amount*10**this.state.tokenDecimals, // Convert to correct decimal places
         { from: this.web3.eth.accounts[this.state.defaultAccount] },
         (err, res) => {
-          console.log(err)
-          console.log(res)
+          if (err) console.error(err)
+          else console.log(res)
         }
       )
     }
@@ -250,10 +283,12 @@ class App extends Component {
 
   /**
    * Remove an order from the orderBook.
+   * @param {String} orderId The 32 byte hash of the order params representing its unique id.
    */
   removeOrder(orderId) {
     for (let i = 0; i < this.state.orderBook.length; i++) {
       if (this.state.orderBook[i].key === orderId) {
+        // Slice this index from the current order book and update
         let updatedOrderBook = this.state.orderBook.slice();
         updatedOrderBook.splice(i, 1);
         this.setState({ orderBook: updatedOrderBook })
@@ -267,25 +302,26 @@ class App extends Component {
    */
   submitOrder() {
     // First give the exchange the appropriate allowance
+    // NOTE if the submitOrder fails the exchange still has the allowance
     this.state.token.approve(
       this.state.exchange.address,
-      this.state.bidAmount, {
+      this.state.bidAmount*10**this.state.tokenDecimals, {
         from: this.web3.eth.accounts[this.state.defaultAccount],
         gas: 1e6
       }, (err, res) => {
-        console.log(err)
-        console.log(res)
+        if (err) console.error(err)
+        else console.log(res)
         // Submit the order to the exchange
         this.state.exchange.submitOrder(
           this.state.token.address,
-          this.state.bidAmount,
+          this.state.bidAmount*10**this.state.tokenDecimals,
           '0', // Ether address
-          this.state.askAmount, {
+          this.state.askAmount*10**18 /* harcoded ETH decimal places */, {
             from: this.web3.eth.accounts[this.state.defaultAccount],
             gas: 1e6
           }, (err, res) => {
-            console.log(err)
-            console.log(res)
+            if (err) console.error(err)
+            else console.log(res)
           }
         )
     })
@@ -307,8 +343,8 @@ class App extends Component {
         amount*10**this.state.tokenDecimals, // Convert to correct decimal places
         { from: this.web3.eth.accounts[this.state.defaultAccount] },
         (err, res) => {
-          console.log(err)
-          console.log(res)
+          if (err) console.error(err)
+          else console.log(res)
         }
       )
     }
@@ -317,7 +353,7 @@ class App extends Component {
   /**
    * When a new account in selected in the available accounts drop down.
    */
-  handleDropDownChange = (event, index, defaultAccount) => {
+  handleDropDownChange = (e, index, defaultAccount) => {
     this.setState({ defaultAccount })
     this.loadAccountBalances(this.state.availableAccounts[index].key)
   }
@@ -326,30 +362,34 @@ class App extends Component {
     let component
     if (window.location.hash === '#exchange') {
       component = <div>
+        <h3>Active Account</h3>
+        <DropDownMenu maxHeight={300} width={500} value={this.state.defaultAccount} onChange={this.handleDropDownChange} >
+          {this.state.availableAccounts}
+        </DropDownMenu>
         <h3>Account Balances</h3>
         <p className="App-intro">{this.state.ethBalance / 1e18} ETH</p>
-        <p className="App-intro">
-          {this.state.tokenBalance / 10**this.state.tokenDecimals} {this.state.tokenSymbol}
-        </p>
+        <p className="App-intro"> {this.state.tokenBalance / 10**this.state.tokenDecimals} {this.state.tokenSymbol}</p>
         <br />
         <h3>Submit an Order!</h3>
         <p>The default exchange supports only the pairing of {this.state.tokenSymbol} / ETH</p>
         <TextField floatingLabelText="Bid" style={{width: 75}} value={this.state.tokenSymbol} />
-        <TextField floatingLabelText="Amount" style={{width: 75}} value={this.state.bidAmount} onChange={(e, bidAmount) => this.setState({ bidAmount })}/>
-        <TextField floatingLabelText="Ask" style={{width: 75}} value='ETH' />
-        <TextField floatingLabelText="Amount" style={{width: 75}} value={this.state.askAmount} onChange={(e, askAmount) => this.setState({ askAmount })}/>
+        <TextField floatingLabelText="Amount" style={{width: 75}} value={this.state.bidAmount}
+          onChange={(e, bidAmount) => this.setState({ bidAmount })}
+        />
+        <TextField floatingLabelText="Ask" style={{width: 75}} value="ETH" />
+        <TextField floatingLabelText="Amount" style={{width: 75}} value={this.state.askAmount}
+          onChange={(e, askAmount) => this.setState({ askAmount })}
+        />
         <br />
         <RaisedButton label="Submit" labelPosition="after" style={{width: 300}} primary={true} onClick={() => this.submitOrder()}/>
         <br />
         <br />
         <h3>Order Book</h3>
         <p>Select an order to execute!</p>
-        <RaisedButton label="Execute Order" labelPosition="after" style={{width: 500}} primary={true} onClick={() => this.executeOrder(this.state.selectedOrder)}/>
-        <Table
-          style={{ maxHeight: 500, overflow: 'auto' }}
-          fixedHeader={true}
-          multiSelectable={false}
-        >
+        <RaisedButton label="Execute Order" labelPosition="after" style={{width: 500}} primary={true}
+          onClick={() => this.executeOrder(this.state.selectedOrder)}
+        />
+        <Table style={{ maxHeight: 500, overflow: "auto" }} fixedHeader={true} multiSelectable={false} >
           <TableHeader>
             <TableRow>
               <TableHeaderColumn>Maker</TableHeaderColumn>
@@ -359,81 +399,41 @@ class App extends Component {
               <TableHeaderColumn>Ask Amount</TableHeaderColumn>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            { this.state.orderBook }
-          </TableBody>
+          <TableBody> { this.state.orderBook } </TableBody>
         </Table>
       </div>
     } else {
       component = <div>
         <h3>Active Account</h3>
-        <DropDownMenu
-          maxHeight={300}
-          width={500}
-          value={this.state.defaultAccount}
-          onChange={this.handleDropDownChange}
-        >
+        <DropDownMenu maxHeight={300} width={500} value={this.state.defaultAccount} onChange={this.handleDropDownChange}>
           {this.state.availableAccounts}
         </DropDownMenu>
-
         <h3>Balances</h3>
         <p className="App-intro">{this.state.ethBalance / 1e18} ETH</p>
-        <p className="App-intro">
-          {this.state.tokenBalance / 10**this.state.tokenDecimals} {this.state.tokenSymbol}
-        </p>
+        <p className="App-intro"> {this.state.tokenBalance / 10**this.state.tokenDecimals} {this.state.tokenSymbol}</p>
         <br />
         <div>
           <h3>Mint Tokens</h3>
-          <TextField
-            floatingLabelText="User to mint tokens to."
-            style={{width: 400}}
-            value={this.state.mintUser}
-            onChange={(e, mintUser) => {
-              this.setState({ mintUser })
-            }}
+          <TextField floatingLabelText="User to mint tokens to." style={{width: 400}} value={this.state.mintUser}
+            onChange={(e, mintUser) => {this.setState({ mintUser })}}
           />
-
-          <TextField
-            floatingLabelText="Amount."
-            style={{width: 100}}
-            value={this.state.mintAmount}
-            onChange={(e, mintAmount) => {
-              this.setState({ mintAmount })
-            }}
+          <TextField floatingLabelText="Amount." style={{width: 100}} value={this.state.mintAmount}
+            onChange={(e, mintAmount) => {this.setState({ mintAmount })}}
           />
-
-          <RaisedButton
-            label="Mint"
-            labelPosition="before"
-            primary={true}
+          <RaisedButton label="Mint" labelPosition="before" primary={true}
             onClick={() => this.mint(this.state.mintUser, this.state.mintAmount)}
           />
         </div>
         <br />
         <div>
           <h3>Transfer Tokens</h3>
-          <TextField
-            floatingLabelText="User to transfer tokens to."
-            style={{width: 400}}
-            value={this.state.transferUser}
-            onChange={(e, transferUser) => {
-              this.setState({ transferUser })
-            }}
+          <TextField floatingLabelText="User to transfer tokens to." style={{width: 400}} value={this.state.transferUser}
+            onChange={(e, transferUser) => { this.setState({ transferUser }) }}
           />
-
-          <TextField
-            floatingLabelText="Amount."
-            style={{width: 100}}
-            value={this.state.amount}
-            onChange={(e, transferAmount) => {
-              this.setState({ transferAmount })
-            }}
+          <TextField floatingLabelText="Amount." style={{width: 100}} value={this.state.amount}
+            onChange={(e, transferAmount) => { this.setState({ transferAmount })}}
           />
-
-          <RaisedButton
-            label="Transfer"
-            labelPosition="before"
-            primary={true}
+          <RaisedButton label="Transfer" labelPosition="before" primary={true}
             onClick={() => this.transfer(this.state.transferUser, this.state.transferAmount)}
           />
         </div>

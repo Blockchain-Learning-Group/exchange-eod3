@@ -9,15 +9,9 @@ contract('Exchange.submitOrder() && executeOrder()', accounts => {
   let token
 
   it("submitOrder(), should succeed by adding a new order to the orderBook on-chain.", async () => {
-    /**********************************
-    * Deploy a new exchange and token *
-    **********************************/
     exchange = await Exchange.new()
     token = await Token.new({ from: maker });
 
-    /*******************************
-    * Create the test order params *
-    *******************************/
     const bidToken = token.address
     const bidAmount = 1
     const askToken = 0
@@ -31,8 +25,6 @@ contract('Exchange.submitOrder() && executeOrder()', accounts => {
         gas : 4e6
       }
     )
-
-    assert(false)
 
     const log = tx.logs[0]
     assert.equal(log.event, 'LogOrderSubmitted', 'Event not emitted')
@@ -50,46 +42,29 @@ contract('Exchange.submitOrder() && executeOrder()', accounts => {
     /********************************
     * Get ETH balances before trade *
     ********************************/
-    const makerBalanceBefore = web3.eth.getBalance(maker).toNumber()
-    const takerBalanceBefore = web3.eth.getBalance(taker).toNumber()
 
     /********************
     * Execute the order *
     ********************/
-    const tx = await exchange.executeOrder(orderId, {
-        from: taker,
-        gas : 4e6,
-        value: 100 // ask amount from previously submitted order
-      }
-    )
 
     /*******************************
     * Confirm correct event logged *
     *******************************/
-    const log = tx.logs[0]
-    assert.equal(log.event, 'LogOrderExecuted', 'Event not emitted')
+
 
     /*********************************
     * Confirm token balances correct *
     *********************************/
-    const makerTokenBalance = (await token.balanceOf(maker)).toNumber()
-    const takerTokenBalance = (await token.balanceOf(taker)).toNumber()
-    assert.equal(makerTokenBalance, 0, 'Maker token balance incorrect.')
-    assert.equal(takerTokenBalance, 1, 'Taker token balance incorrect.')
+
 
     /*******************************
     * Confirm ETH balances correct *
     *******************************/
-    const makerBalanceAfter = web3.eth.getBalance(maker).toNumber()
-    const takerBalanceAfter = web3.eth.getBalance(taker).toNumber()
-    assert.equal(makerBalanceAfter, makerBalanceBefore + 100, 'Maker eth balance incorrect')
-    // Note taker also had to pay for the executeOrder tx
-    assert.isBelow(takerBalanceAfter, takerBalanceBefore - 100, 'Taker eth balance incorrect')
+
 
     /**************************
     * Confirm does not exist! *
     **************************/
-    const order = await exchange.orderBook_(orderId)
-    assert.equal(order[3], 0)
+    
   })
 })

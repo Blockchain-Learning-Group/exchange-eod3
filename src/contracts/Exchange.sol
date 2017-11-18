@@ -7,9 +7,6 @@ import './token/ERC20.sol';
  * @dev Enables user selected orders to execute and be completely filled.
  */
 contract Exchange {
-  /**
-   * Data Structures
-   */
   struct Order {
     address maker;
     address bidToken;
@@ -18,12 +15,6 @@ contract Exchange {
     uint256 askAmount;
   }
 
-  /**
-   * Storage
-   */
-  /***********************************
-  * Create a mapping to store orders *
-  ***********************************/
   mapping(bytes32 => Order) public orderBook_;
 
   /**
@@ -37,7 +28,6 @@ contract Exchange {
     address askToken,
     uint256 askAmount
   );
-
   event LogOrderExecuted (
     bytes32 id,
     address maker,
@@ -74,7 +64,7 @@ contract Exchange {
     * Confirm order does not already exist *
     ***************************************/
     bytes32 orderId = keccak256(_bidToken, _bidAmount, _askToken, _askAmount);
-    require(orderBook_[orderId].askAmount == 0); // check for existence, default to 0
+    require(orderBook_[orderId].askAmount == 0); // check for existence, default to 0, assume no one is giving tokens away for free
 
     /******************************
     * Add order to the order book *
@@ -87,6 +77,9 @@ contract Exchange {
       askAmount: _askAmount
     });
 
+    /*************
+    * Emit Event *
+    *************/
     LogOrderSubmitted(orderId, msg.sender, _bidToken,_bidAmount, _askToken, _askAmount);
   }
 
@@ -120,6 +113,9 @@ contract Exchange {
     *******************/
     delete orderBook_[_orderId];
 
+    /*************
+    * Emit Event *
+    *************/
     LogOrderExecuted(_orderId, order.maker, msg.sender, order.bidToken, order.bidAmount, order.askToken, order.askAmount);
   }
 }

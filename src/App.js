@@ -49,7 +49,7 @@ class App extends Component {
     if (window.web3)
         this.web3 = new Web3(window.web3.currentProvider)
     else
-    this.web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"))
+      this.web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"))
 
     // If connected load contracts
     if (this.web3.isConnected()) {

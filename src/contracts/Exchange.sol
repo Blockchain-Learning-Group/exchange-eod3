@@ -63,7 +63,7 @@ contract Exchange {
     /***************************************
     * Confirm order does not already exist *
     ***************************************/
-    bytes32 orderId = keccak256(_bidToken, _bidAmount, _askToken, _askAmount);
+    bytes32 orderId = keccak256(msg.sender, _bidToken, _bidAmount, _askToken, _askAmount);
     require(orderBook_[orderId].askAmount == 0); // check for existence, default to 0, assume no one is giving tokens away for free
 
     /******************************

@@ -146,7 +146,7 @@ class App extends Component {
     // TODO support multiple tokens and pairings
     this.setState({
       orderBook: [
-        <TableRow key={order.id} selected={this.setState({ selectedOrder: order.id })}>
+        <TableRow key={order.id}>
           <TableRowColumn>{order.maker}</TableRowColumn>
           <TableRowColumn>{this.state.tokenSymbol}</TableRowColumn>
           <TableRowColumn>{order.bidAmount.toNumber() / 10**this.state.tokenDecimals}</TableRowColumn>
@@ -387,9 +387,9 @@ class App extends Component {
         <h3>Order Book</h3>
         <p>Select an order to execute!</p>
         <RaisedButton label="Execute Order" labelPosition="after" style={{width: 500}} primary={true}
-          onClick={() => this.executeOrder(this.state.selectedOrder)}
+          onClick={() => this.executeOrder(this.selectedOrder)}
         />
-        <Table style={{ maxHeight: 500, overflow: "auto" }} fixedHeader={true} multiSelectable={false} >
+        <Table style={{ maxHeight: 500, overflow: "auto" }} fixedHeader={true} multiSelectable={false} onRowSelection={r => { if (this.state.orderBook[r[0]]) this.selectedOrder = this.state.orderBook[r[0]].key}}>
           <TableHeader>
             <TableRow>
               <TableHeaderColumn>Maker</TableHeaderColumn>

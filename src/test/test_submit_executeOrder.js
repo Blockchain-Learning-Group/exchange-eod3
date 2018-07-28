@@ -17,20 +17,21 @@ contract('Exchange.submitOrder() && executeOrder()', accounts => {
     * Deploy a new token and exchange *
     **********************************/
     exchange = await Exchange.new()
-    token = await Token.new({ from: maker });
+    token = await Token.new()
 
     /**********************
     * Define order params *
     **********************/
+    const rate = await token.rate()
     const bidToken = token.address
-    const bidAmount = 1
+    const bidAmount = 100
     const askToken = 0
     const askAmount = 100
 
     /**************************************************
     * Setup the tx, mint tokens and provide allowance *
     **************************************************/
-    await token.mint(maker, bidAmount, { from: maker });
+    await token.buy({ from: maker, value: bidAmount / rate });
     await token.approve(exchange.address, bidAmount, { from: maker })
 
     /*******************
@@ -46,7 +47,7 @@ contract('Exchange.submitOrder() && executeOrder()', accounts => {
     * Confirm the correct event emitted *
     ************************************/
     const log = tx.logs[0]
-    assert.equal(log.event, 'LogOrderSubmitted', 'Event not emitted')
+    assert.equal(log.event, 'OrderSubmitted', 'Event not emitted')
 
     /********************************
     * Confirm on chain order stored *
@@ -81,7 +82,7 @@ contract('Exchange.submitOrder() && executeOrder()', accounts => {
     * Confirm correct event logged *
     *******************************/
     const log = tx.logs[0]
-    assert.equal(log.event, 'LogOrderExecuted', 'Event not emitted')
+    assert.equal(log.event, 'OrderExecuted', 'Event not emitted')
 
     /*********************************
     * Confirm token balances correct *
@@ -89,7 +90,7 @@ contract('Exchange.submitOrder() && executeOrder()', accounts => {
     const makerTokenBalance = (await token.balanceOf(maker)).toNumber()
     const takerTokenBalance = (await token.balanceOf(taker)).toNumber()
     assert.equal(makerTokenBalance, 0, 'Maker token balance incorrect.')
-    assert.equal(takerTokenBalance, 1, 'Taker token balance incorrect.')
+    assert.equal(takerTokenBalance, 100, 'Taker token balance incorrect.')
 
     /*******************************
     * Confirm ETH balances correct *
